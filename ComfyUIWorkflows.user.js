@@ -5,7 +5,7 @@
 // @supportURL   https://github.com/mr-asa/comfyui-workflows-tampermonkey/issues
 // @updateURL    https://raw.githubusercontent.com/mr-asa/comfyui-workflows-tampermonkey/main/ComfyUIWorkflows.user.js
 // @downloadURL  https://raw.githubusercontent.com/mr-asa/comfyui-workflows-tampermonkey/main/ComfyUIWorkflows.user.js
-// @version      0.2.3
+// @version      0.2.4
 // @icon         https://raw.githubusercontent.com/Comfy-Org/ComfyUI_frontend/main/public/assets/favicon.ico
 // @description  Find embedded ComfyUI workflows and prompts in web media, attachments, and code blocks.
 // @match        http://*/*
@@ -428,7 +428,8 @@ GM_addStyle(`${badgeCss}
 .cuw-note, .cuw-extra { color: #c6c8d0; font-size: 12px; }
 .cuw-name { flex: 1; }
 .cuw-ok { color: #6ee79b; } .cuw-similar { color: #fbbf24; } .cuw-missing { color: #fda4af; }
-.cuw-links a { margin-left: 6px; color: #b8c9ff; }
+.cuw-links { display: inline-flex; flex: 0 0 auto; align-items: center; flex-wrap: nowrap; gap: 6px; }
+.cuw-links a { display: inline-flex; align-items: center; white-space: nowrap; color: #b8c9ff; }
 .cuw-links img { width: 16px; height: 16px; vertical-align: middle; }
 .cuw-toast { position: fixed; z-index: 2147483647; bottom: 16px; right: 16px; padding: 10px 14px; }
 `);
