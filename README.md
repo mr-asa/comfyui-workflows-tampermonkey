@@ -1,12 +1,14 @@
-# ComfyUI Workflows for Discord
+# ComfyUI Workflows
 
-A Tampermonkey userscript for Discord Web. It adds a **WF** badge for embedded ComfyUI workflows and a **P** badge for prompt-only files.
+A Tampermonkey userscript for websites, including Discord Web. It adds a **WF** badge for embedded ComfyUI workflows and a **P** badge for prompt-only files.
 
 ## Install
 
-Open [Install in Tampermonkey](https://raw.githubusercontent.com/mr-asa/comfyui-workflows-tampermonkey/main/ComfyUIWorkflows.user.js), click **Install**, and reload Discord Web.
+Open [Install in Tampermonkey](https://raw.githubusercontent.com/mr-asa/comfyui-workflows-tampermonkey/main/ComfyUIWorkflows.user.js), click **Install**, and reload the page you want to use it on.
 
 Tampermonkey checks GitHub for updates. You can also run a manual update check from the Tampermonkey dashboard. To publish an update, increase the script's @version and push it to main.
+
+YouTube, Netflix, Twitch, Disney+, Prime Video, Hulu, Max, and Spotify are excluded. The script skips HLS and DASH playlists and blob URLs. For other sites, you can add exclusions in Tampermonkey.
 
 ## Settings
 

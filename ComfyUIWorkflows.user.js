@@ -1,16 +1,33 @@
 // ==UserScript==
-// @name         ComfyUI Workflows for Discord
+// @name         ComfyUI Workflows
 // @namespace    https://github.com/mr-asa
 // @homepageURL  https://github.com/mr-asa/comfyui-workflows-tampermonkey
 // @supportURL   https://github.com/mr-asa/comfyui-workflows-tampermonkey/issues
 // @updateURL    https://raw.githubusercontent.com/mr-asa/comfyui-workflows-tampermonkey/main/ComfyUIWorkflows.user.js
 // @downloadURL  https://raw.githubusercontent.com/mr-asa/comfyui-workflows-tampermonkey/main/ComfyUIWorkflows.user.js
-// @version      0.1.1
+// @version      0.2.0
 // @icon         https://raw.githubusercontent.com/Comfy-Org/ComfyUI_frontend/main/public/assets/favicon.ico
-// @description  Find embedded ComfyUI workflows and prompts in Discord media and messages.
-// @match        https://discord.com/*
-// @match        https://ptb.discord.com/*
-// @match        https://canary.discord.com/*
+// @description  Find embedded ComfyUI workflows and prompts in web media, attachments, and code blocks.
+// @match        http://*/*
+// @match        https://*/*
+// @exclude      *://youtube.com/*
+// @exclude      *://*.youtube.com/*
+// @exclude      *://youtu.be/*
+// @exclude      *://*.youtube-nocookie.com/*
+// @exclude      *://netflix.com/*
+// @exclude      *://*.netflix.com/*
+// @exclude      *://twitch.tv/*
+// @exclude      *://*.twitch.tv/*
+// @exclude      *://disneyplus.com/*
+// @exclude      *://*.disneyplus.com/*
+// @exclude      *://primevideo.com/*
+// @exclude      *://*.primevideo.com/*
+// @exclude      *://hulu.com/*
+// @exclude      *://*.hulu.com/*
+// @exclude      *://max.com/*
+// @exclude      *://*.max.com/*
+// @exclude      *://spotify.com/*
+// @exclude      *://*.spotify.com/*
 // @noframes
 // @grant        GM_addStyle
 // @grant        GM_getValue
@@ -502,7 +519,7 @@ class ComfyUIWorkflow {
             }, 150);
         };
         new MutationObserver(schedule).observe(document.body, {
-            subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ["src", "href"]
+            subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ["src", "srcset", "href"]
         });
         document.addEventListener("loadedmetadata", schedule, true);
         document.addEventListener("load", schedule, true);
@@ -515,18 +532,19 @@ class ComfyUIWorkflow {
     }
 
     scan() {
-        const root = '[class*="messagesWrapper"]';
-        document.querySelectorAll(`${root} :is(img, video, audio, a)`).forEach(el => {
-            const url = this.originalUrl(el.currentSrc || el.src || el.href);
-            if (url && /(?:^|\.)discord(?:app)?\.(?:com|net)$/.test(new URL(url).hostname)) {
-                this.process(el, url);
-            }
+        const root = /^(?:(?:ptb|canary)\.)?discord\.com$/.test(location.hostname)
+            ? document.querySelector('[class*="messagesWrapper"]')
+            : document;
+        if (!root) return;
+        root.querySelectorAll("img, video, audio, a[href]").forEach(el => {
+            const kind = el.localName;
+            if (kind === "img" && el.naturalWidth && el.naturalWidth < 128) return;
+            const source = el.currentSrc || (kind === "a" ? el.href : el.getAttribute("src"));
+            this.process(el, this.originalUrl(source, kind));
         });
-        document.querySelectorAll(`${root} code`).forEach(code => {
-            const text = code.textContent;
-            this.process(code, text, true);
-        });
+        root.querySelectorAll("code").forEach(code => this.process(code, code.textContent, true));
     }
+
 
     async process(el, source, isCode = false) {
         const previous = this.checked.get(el);
@@ -534,13 +552,13 @@ class ComfyUIWorkflow {
         const state = { source, badge: null };
         previous?.badge?.remove();
         this.checked.set(el, state);
-        if (el.naturalWidth && el.naturalWidth < 128) return;
+        if (!source) return;
 
-        const data = isCode ? (/"nodes"|"class_type"/.test(source) && scanText(source)) : await this.getMeta(source);
+        const data = isCode ? (/"nodes"|"class_type"/.test(source) && scanText(source)) : await this.getMeta(source, el.localName);
         if (!data || !el.isConnected || this.checked.get(el) !== state) return;
 
         const host = isCode ? el.closest("pre") ?? el
-            : el.closest("a")?.parentElement ?? el.parentElement;
+            : el.matches("a") ? el.parentElement : el.closest("a, picture")?.parentElement ?? el.parentElement;
         if (!host || [...host.children].some(child => child.classList.contains(BADGE_CLASS) && child.dataset.source === source)) return;
         if (getComputedStyle(host).position === "static") host.style.position = "relative";
         const label = data.variants.some(v => v.workflow) ? "WF" : "P";
@@ -814,33 +832,47 @@ class ComfyUIWorkflow {
 
     /* ------------------------------------ fetching ----------------------------------- */
 
-    /** Strip Discord resize params so we get the original file with its metadata. */
-    originalUrl(src) {
+    /** Strip Discord resize parameters to request the original attachment. */
+    originalUrl(src, kind) {
+        if (!src) return null;
         try {
-            const u = new URL(src);
-            if (u.hostname === "media.discordapp.net") u.hostname = "cdn.discordapp.com";
-            ["width", "height", "format", "quality", "animated"].forEach(p => u.searchParams.delete(p));
-            if (![IMAGE_EXT, RANGE_EXT, JSON_EXT].some(re => re.test(u.pathname))) return null;
-            return u.toString();
+            const url = new URL(src, document.baseURI);
+            if (!["http:", "https:"].includes(url.protocol)) return null;
+            if (url.hostname === "media.discordapp.net") url.hostname = "cdn.discordapp.com";
+            if (url.hostname === "cdn.discordapp.com") {
+                ["width", "height", "format", "quality", "animated"].forEach(key => url.searchParams.delete(key));
+            }
+            if (/\.(m3u8|mpd)$/i.test(url.pathname)) return null;
+            const supported = [IMAGE_EXT, RANGE_EXT, JSON_EXT].some(ext => ext.test(url.pathname));
+            const extensionlessMedia = ["img", "audio", "video"].includes(kind) && !/\.[a-z0-9]+$/i.test(url.pathname);
+            if (!supported && !extensionlessMedia) return null;
+            url.hash = "";
+            return url.href;
         } catch {
             return null;
         }
     }
 
-    getMeta(url) {
-        if (!this.cache.has(url)) this.cache.set(url, this.fetchMeta(url).catch(() => null));
-        return this.cache.get(url);
+    getMeta(url, kind) {
+        const rangeOnly = kind === "audio" || kind === "video";
+        const key = rangeOnly ? "range:" + url : url;
+        if (!this.cache.has(key)) {
+            this.cache.set(key, this.fetchMeta(url, rangeOnly).catch(() => null));
+            if (this.cache.size > 512) this.cache.delete(this.cache.keys().next().value);
+        }
+        return this.cache.get(key);
     }
 
-    async fetchMeta(url) {
+    async fetchMeta(url, rangeOnly) {
         const name = new URL(url).pathname;
-        if (RANGE_EXT.test(name)) return this.fetchLargeMeta(url, BOX_EXT.test(name));
+        if (rangeOnly || RANGE_EXT.test(name)) return this.fetchLargeMeta(url, BOX_EXT.test(name));
         const res = await request(url, { maxBytes: JSON_EXT.test(name) ? MAX_JSON_FILE : MAX_MOOV });
         if (!res.ok) return null;
         const buf = new Uint8Array(await res.arrayBuffer());
-        if (JSON_EXT.test(name)) return buf.length > MAX_JSON_FILE ? null : scanBytes(buf);
+        if (JSON_EXT.test(name)) return scanBytes(buf);
         return (await parsePng(buf)) ?? scanBytes(buf);
     }
+
 
     /** Video/audio can be huge: read only the parts that hold metadata. */
     async fetchLargeMeta(url, isBox) {
