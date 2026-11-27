@@ -26,6 +26,10 @@ Enter X and Y from 0 to 1. X increases rightward and Y increases downward, relat
 
 The default ComfyUI URL is `http://127.0.0.1:8188`. Use **Test connection** to check your URL. Tampermonkey may ask for permission to contact your configured server.
 
+## Imagus
+
+Hover over a thumbnail to open the Imagus or Imagus Reborn popup. The script checks the media URL shown in the popup and displays a badge if that file contains ComfyUI metadata.
+
 ## Badge actions
 
 - View and copy positive and negative prompts.

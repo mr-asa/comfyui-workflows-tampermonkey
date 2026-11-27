@@ -5,7 +5,7 @@
 // @supportURL   https://github.com/mr-asa/comfyui-workflows-tampermonkey/issues
 // @updateURL    https://raw.githubusercontent.com/mr-asa/comfyui-workflows-tampermonkey/main/ComfyUIWorkflows.user.js
 // @downloadURL  https://raw.githubusercontent.com/mr-asa/comfyui-workflows-tampermonkey/main/ComfyUIWorkflows.user.js
-// @version      0.2.1
+// @version      0.2.2
 // @icon         https://raw.githubusercontent.com/Comfy-Org/ComfyUI_frontend/main/public/assets/favicon.ico
 // @description  Find embedded ComfyUI workflows and prompts in web media, attachments, and code blocks.
 // @match        http://*/*
@@ -376,7 +376,7 @@ async function parsePng(buf) {
 
 
 
-GM_addStyle(`
+const badgeCss = `
 .cuw-badge {
     position: absolute;
     left: clamp(0px, calc(var(--cuw-x) - 12px), calc(100% - 24px));
@@ -385,6 +385,9 @@ GM_addStyle(`
     background: #141414e6; color: #6ee79b; font: 700 11px/24px system-ui; cursor: pointer;
 }
 .cuw-badge:hover { background: #303030; }
+`;
+
+GM_addStyle(`${badgeCss}
 .cuw-dialog, .cuw-toast {
     color: #f2f3f5; background: #25262b; border: 1px solid #52545b; border-radius: 10px;
     font: 14px/1.5 system-ui;
@@ -537,6 +540,7 @@ class ComfyUIWorkflow {
     cache = new Map();
     checked = new WeakMap();
     scanTimer = null;
+    imagusRoots = new WeakSet();
 
     get server() {
         return this.settings.server;
@@ -554,9 +558,8 @@ class ComfyUIWorkflow {
                 this.scan();
             }, 150);
         };
-        new MutationObserver(schedule).observe(document.body, {
-            subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ["src", "srcset", "href"]
-        });
+        this.observer = new MutationObserver(schedule);
+        this.observeMedia(document.documentElement);
         document.addEventListener("loadedmetadata", schedule, true);
         document.addEventListener("load", schedule, true);
         this.scan();
@@ -567,18 +570,43 @@ class ComfyUIWorkflow {
         document.documentElement.style.setProperty("--cuw-y", `${this.settings.y * 100}%`);
     }
 
+    observeMedia(root) {
+        this.observer.observe(root, {
+            subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ["src", "srcset", "href"]
+        });
+    }
+
+    scanMedia(el, popup = false) {
+        const kind = el.localName;
+        if (!popup && kind === "img" && el.naturalWidth && el.naturalWidth < 128) return;
+        const source = popup ? el.getAttribute("src") || el.currentSrc
+            : el.currentSrc || (kind === "a" ? el.href : el.getAttribute("src"));
+        this.process(el, this.originalUrl(source, kind));
+    }
+
     scan() {
         const root = /^(?:(?:ptb|canary)\.)?discord\.com$/.test(location.hostname)
             ? document.querySelector('[class*="messagesWrapper"]')
-            : document;
-        if (!root) return;
-        root.querySelectorAll("img, video, audio, a[href]").forEach(el => {
-            const kind = el.localName;
-            if (kind === "img" && el.naturalWidth && el.naturalWidth < 128) return;
-            const source = el.currentSrc || (kind === "a" ? el.href : el.getAttribute("src"));
-            this.process(el, this.originalUrl(source, kind));
+            : document.body;
+        root?.querySelectorAll("img, video, audio, a[href]").forEach(el => this.scanMedia(el));
+        root?.querySelectorAll("code").forEach(code => this.process(code, code.textContent, true));
+
+        // Classic Imagus mounts its fixed popup directly under <html>.
+        document.querySelectorAll("html > div > :is(img, video, audio)").forEach(el => {
+            if (el.parentElement.style.position === "fixed") this.scanMedia(el, true);
         });
-        root.querySelectorAll("code").forEach(code => this.process(code, code.textContent, true));
+
+        // Imagus Reborn mounts the popup inside an open shadow root.
+        document.querySelectorAll("html > .imagus").forEach(host => {
+            const shadow = host.shadowRoot;
+            if (!shadow) return;
+            if (!this.imagusRoots.has(shadow)) {
+                this.imagusRoots.add(shadow);
+                if (this.observer) this.observeMedia(shadow);
+                shadow.append(element("style", null, badgeCss));
+            }
+            shadow.querySelectorAll("#imagus-popup :is(img, video, audio)").forEach(el => this.scanMedia(el, true));
+        });
     }
 
 
