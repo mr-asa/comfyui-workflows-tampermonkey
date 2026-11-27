@@ -5,7 +5,7 @@
 // @supportURL   https://github.com/mr-asa/comfyui-workflows-tampermonkey/issues
 // @updateURL    https://raw.githubusercontent.com/mr-asa/comfyui-workflows-tampermonkey/main/ComfyUIWorkflows.user.js
 // @downloadURL  https://raw.githubusercontent.com/mr-asa/comfyui-workflows-tampermonkey/main/ComfyUIWorkflows.user.js
-// @version      0.2.4
+// @version      0.2.5
 // @icon         https://raw.githubusercontent.com/Comfy-Org/ComfyUI_frontend/main/public/assets/favicon.ico
 // @description  Find embedded ComfyUI workflows and prompts in web media, attachments, and code blocks.
 // @match        http://*/*
@@ -410,7 +410,7 @@ GM_addStyle(`${badgeCss}
     color: #f2f3f5; background: #25262b; border: 1px solid #52545b; border-radius: 10px;
     font: 14px/1.5 system-ui;
 }
-.cuw-dialog { position: fixed; inset: 0; margin: auto; width: min(560px, 88vw); max-height: 85vh; padding: 18px; overflow: auto; }
+.cuw-dialog { position: fixed; inset: 0; margin: auto; width: min(560px, 88vw); max-height: 85vh; padding: 18px; overflow: auto; overscroll-behavior: contain; }
 .cuw-dialog::backdrop { background: #0008; }
 .cuw-dialog h2, .cuw-dialog h4 { margin: 0 0 8px; color: inherit; }
 .cuw-dialog h2, .cuw-name { overflow-wrap: anywhere; }
@@ -471,6 +471,7 @@ function showDialog(title, content, { confirmText = "Close", cancelText, onConfi
     dialog.append(element("h2", null, title), content, actions);
     dialog.addEventListener("close", () => dialog.remove(), { once: true });
     dialog.addEventListener("keydown", event => event.stopPropagation());
+    dialog.addEventListener("wheel", event => event.stopPropagation(), { passive: true });
     document.body.append(dialog);
     dialog.showModal();
     return dialog;
