@@ -5,7 +5,7 @@
 // @supportURL   https://github.com/mr-asa/comfyui-workflows-tampermonkey/issues
 // @updateURL    https://raw.githubusercontent.com/mr-asa/comfyui-workflows-tampermonkey/main/ComfyUIWorkflows.user.js
 // @downloadURL  https://raw.githubusercontent.com/mr-asa/comfyui-workflows-tampermonkey/main/ComfyUIWorkflows.user.js
-// @version      0.2.5
+// @version      0.2.6
 // @icon         https://raw.githubusercontent.com/Comfy-Org/ComfyUI_frontend/main/public/assets/favicon.ico
 // @description  Find embedded ComfyUI workflows and prompts in web media, attachments, and code blocks.
 // @match        http://*/*
@@ -424,6 +424,17 @@ GM_addStyle(`${badgeCss}
     box-sizing: border-box; width: 100%; padding: 6px; color: inherit; background: #191a1e; border: 1px solid #52545b; border-radius: 5px;
 }
 .cuw-dialog textarea { resize: vertical; }
+.cuw-prompt-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+.cuw-prompt-heading h4 { margin: 0; }
+.cuw-dialog .cuw-copy { display: grid; place-items: center; width: 30px; height: 30px; padding: 0; background: transparent; }
+.cuw-copy-icon { position: relative; display: block; width: 16px; height: 16px; }
+.cuw-copy-icon::before, .cuw-copy-icon::after {
+    content: ""; position: absolute; width: 10px; height: 10px;
+    box-sizing: border-box; border: 1.5px solid currentColor; border-radius: 2px;
+}
+.cuw-copy-icon::before { top: 1px; right: 1px; }
+.cuw-copy-icon::after { bottom: 1px; left: 1px; background: #25262b; }
+.cuw-copy:hover .cuw-copy-icon::after { background: #575b6c; }
 .cuw-coordinates { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .cuw-note, .cuw-extra { color: #c6c8d0; font-size: 12px; }
 .cuw-name { flex: 1; }
@@ -736,8 +747,12 @@ class ComfyUIWorkflow {
         for (const [label, text] of Object.entries({ Positive: prompts.positive, Negative: prompts.negative, "Generation parameters": prompts.parameters })) {
             if (!text) continue;
             content.append(element("section", null,
-                element("div", { className: "cuw-row" }, element("h4", null, label),
-                    button("Copy", () => { GM_setClipboard(text, "text"); notify(`${label} copied`); })),
+                element("div", { className: "cuw-prompt-heading" }, element("h4", null, label),
+                    element("button", {
+                        type: "button", className: "cuw-copy", title: `Copy ${label.toLowerCase()}`,
+                        "aria-label": `Copy ${label.toLowerCase()}`,
+                        onClick: () => { GM_setClipboard(text, "text"); notify(`${label} copied`); }
+                    }, element("span", { className: "cuw-copy-icon", "aria-hidden": "true" }))),
                 element("textarea", { readOnly: true, value: text, rows: Math.min(10, Math.max(3, Math.ceil(text.length / 70))), "aria-label": label })));
         }
         showDialog(`Prompts: ${title}`, content);
