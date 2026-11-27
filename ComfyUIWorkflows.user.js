@@ -53,7 +53,6 @@
 "use strict";
 
 
-const SAVE_HELPER = "http://127.0.0.1:8191/save";
 const DEFAULT_SERVER = "http://127.0.0.1:8188";
 const BADGE_CLASS = "cuw-badge";
 const PNG_SIG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
@@ -584,7 +583,7 @@ async function requestMedia(url, { headers, maxBytes, partial = false } = {}) {
 }
 
 
-const DEFAULT_SETTINGS = { x: 0, y: 0, server: DEFAULT_SERVER, copyFilename: false, saveFolder: "" };
+const DEFAULT_SETTINGS = { x: 0, y: 0, server: DEFAULT_SERVER, copyFilename: false };
 const coordinate = (value, fallback) =>
     typeof value === "number" && Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : fallback;
 
@@ -604,10 +603,6 @@ class ComfyUIWorkflow {
         this.settings.y = coordinate(this.settings.y, 0);
         this.applyPosition();
         GM_registerMenuCommand("ComfyUI Workflow settings", () => this.showSettings());
-        GM_registerMenuCommand("Set save helper token", () => {
-            const token = window.prompt("Paste the token printed by the local save helper.");
-            if (token !== null) GM_setValue("saveHelperToken", token.trim());
-        });
         const schedule = () => {
             if (this.scanTimer) return;
             this.scanTimer = setTimeout(() => {
@@ -712,7 +707,6 @@ class ComfyUIWorkflow {
         const y = axis("Y (vertical)", this.settings.y);
         const server = element("input", { type: "url", value: this.server, required: true, spellcheck: false });
         const copy = element("input", { type: "checkbox", checked: this.settings.copyFilename });
-        const saveFolder = element("input", { type: "text", value: this.settings.saveFolder, spellcheck: false, autocomplete: "off" });
         const readServer = () => {
             server.setCustomValidity("");
             const value = server.value.trim().replace(/\/+$/, "");
@@ -737,9 +731,7 @@ class ComfyUIWorkflow {
                 "Badge position relative to the attachment or code block. (0, 0) top left · (1, 0) top right · (0, 1) bottom left · (1, 1) bottom right · (0.5, 0.5) center."),
             element("label", null, "ComfyUI server URL", server),
             element("div", null, button("Test connection", test)),
-            element("label", null, "JSON save folder (absolute path)", saveFolder),
-            element("div", { className: "cuw-note" }, "Leave blank for browser downloads. A folder path requires the local save helper."),
-            element("label", null, copy, " Copy JSON filename after saving"));
+            element("label", null, copy, " Copy JSON filename after download"));
         x.required = y.required = true;
         showDialog("ComfyUI Workflow settings", content, {
             confirmText: "Save", cancelText: "Cancel",
@@ -747,11 +739,7 @@ class ComfyUIWorkflow {
                 if (!x.reportValidity() || !y.reportValidity()) return false;
                 const url = readServer();
                 if (!url) return false;
-                const folder = saveFolder.value.trim();
-                const absolute = /^(?:[A-Za-z]:[\\/]|\/|\\\\)/.test(folder);
-                saveFolder.setCustomValidity(folder && !absolute ? "Enter an absolute folder path." : "");
-                if (!saveFolder.reportValidity()) return false;
-                this.settings = { x: x.valueAsNumber, y: y.valueAsNumber, server: url, copyFilename: copy.checked, saveFolder: folder };
+                this.settings = { x: x.valueAsNumber, y: y.valueAsNumber, server: url, copyFilename: copy.checked };
                 GM_setValue("settings", this.settings);
                 this.applyPosition();
             }
@@ -801,35 +789,15 @@ class ComfyUIWorkflow {
         showDialog(`Prompts: ${title}`, content);
     }
 
-    async save(base, json) {
+    save(base, json) {
         const filename = base.replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_") + ".json";
-        const { saveFolder, copyFilename } = this.settings;
-        if (saveFolder) {
-            const token = GM_getValue("saveHelperToken", "");
-            if (!token) throw new Error("Set the save helper token in the Tampermonkey menu.");
-            let response;
-            try {
-                response = await request(SAVE_HELPER, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-                    body: JSON.stringify({ folder: saveFolder, filename, json })
-                });
-            } catch {
-                throw new Error("Start the local save helper to save to the configured folder.");
-            }
-            const result = await response.json();
-            if (!response.ok) throw new Error(result.error || `Save failed (HTTP ${response.status})`);
-            if (copyFilename) GM_setClipboard(result.filename, "text");
-            notify(`Saved: ${result.filename}`);
-            return;
-        }
         const url = URL.createObjectURL(new Blob([json], { type: "application/json" }));
         const link = element("a", { href: url, download: filename });
         document.body.append(link);
         link.click();
         link.remove();
         setTimeout(() => URL.revokeObjectURL(url), 30000);
-        if (copyFilename) GM_setClipboard(filename, "text");
+        if (this.settings.copyFilename) GM_setClipboard(filename, "text");
         notify(`Download started: ${filename}`);
     }
 
