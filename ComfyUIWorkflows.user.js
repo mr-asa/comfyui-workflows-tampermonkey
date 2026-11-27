@@ -5,7 +5,8 @@
 // @supportURL   https://github.com/mr-asa/comfyui-workflows-tampermonkey/issues
 // @updateURL    https://raw.githubusercontent.com/mr-asa/comfyui-workflows-tampermonkey/main/ComfyUIWorkflows.user.js
 // @downloadURL  https://raw.githubusercontent.com/mr-asa/comfyui-workflows-tampermonkey/main/ComfyUIWorkflows.user.js
-// @version      0.1.0
+// @version      0.1.1
+// @icon         https://raw.githubusercontent.com/Comfy-Org/ComfyUI_frontend/main/public/assets/favicon.ico
 // @description  Find embedded ComfyUI workflows and prompts in Discord media and messages.
 // @match        https://discord.com/*
 // @match        https://ptb.discord.com/*
