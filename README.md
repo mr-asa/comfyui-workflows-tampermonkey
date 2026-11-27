@@ -1,6 +1,15 @@
 # ComfyUI Workflows
 
-A Tampermonkey userscript for websites, including Discord Web. It adds a **WF** badge for embedded ComfyUI workflows and a **P** badge for prompt-only files.
+A Tampermonkey userscript for websites. It adds a **WF** badge for embedded [ComfyUI](https://github.com/Comfy-Org/ComfyUI) workflows and a **P** badge for prompt-only files.
+
+<table>
+  <tr>
+    <td align="center">
+      <img src="docs/badges.png" alt="Workflow and prompt badges on images"><br>
+      <em>The WF badge marks an embedded workflow. The P badge marks an embedded prompt.</em>
+    </td>
+  </tr>
+</table>
 
 ## Install
 
@@ -26,13 +35,22 @@ Enter X and Y from 0 to 1. X increases rightward and Y increases downward, relat
 
 The default ComfyUI URL is `http://127.0.0.1:8188`. Use **Test connection** to check your URL. Tampermonkey may ask for permission to contact your configured server.
 
+<table>
+  <tr>
+    <td align="center">
+      <img src="docs/settings.png" alt="Badge position and server settings"><br>
+      <em>Set the badge position and configure your ComfyUI server.</em>
+    </td>
+  </tr>
+</table>
+
 ## Civitai generation parameters
 
 A Civitai original image with embedded plain-text generation parameters gets a **P** badge. Open **Prompts** to view and copy the positive and negative prompts or the full parameters block. Queueing requires a ComfyUI API prompt.
 
 ## Imagus
 
-Hover over a thumbnail to open the Imagus or Imagus Reborn popup. The script checks the media URL shown in the popup and displays a badge if that file contains ComfyUI metadata.
+Hover over a thumbnail to open the [Imagus](https://chromewebstore.google.com/detail/imagus/bdlicplmkecjmlefjndmgfgcdnilocio) or [Imagus Reborn](https://github.com/hababr/Imagus-Reborn) popup. The script checks the media URL shown in the popup and displays a badge if that file contains ComfyUI metadata.
 
 ## Badge actions
 
@@ -40,6 +58,33 @@ Hover over a thumbnail to open the Imagus or Imagus Reborn popup. The script che
 - Queue API prompts in ComfyUI with model path matching and confirmation for quantization substitutions.
 - Inspect model and LoRA availability and open model search links.
 - Download workflow and prompt JSON. The browser controls the download folder. Settings can enable copying the suggested filename.
+
+<table>
+  <tr>
+    <td align="center">
+      <img src="docs/menu.png" alt="Workflow badge action menu"><br>
+      <em>Open the badge menu to view prompts, inspect models, or save the workflow.</em>
+    </td>
+  </tr>
+</table>
+
+<table>
+  <tr>
+    <td align="center">
+      <img src="docs/prompts.png" alt="Prompt viewer with copy buttons"><br>
+      <em>View the prompt text and copy it with the icon on the right.</em>
+    </td>
+  </tr>
+</table>
+
+<table>
+  <tr>
+    <td align="center">
+      <img src="docs/models.png" alt="Models and LoRAs with availability and search links"><br>
+      <em>Check which models and LoRAs are available and use the search icons to look them up.</em>
+    </td>
+  </tr>
+</table>
 
 The script checks original attachments for PNG, WebP, JPEG, MP4, WebM, MOV, MKV, M4V, FLAC, MP3, OGG, OPUS, M4A, WAV, and JSON. It also detects workflow JSON pasted in code blocks. Large audio and video use byte ranges. Discord may strip workflow metadata from re-encoded files.
 
