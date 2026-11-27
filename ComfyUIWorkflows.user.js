@@ -5,7 +5,7 @@
 // @supportURL   https://github.com/mr-asa/comfyui-workflows-tampermonkey/issues
 // @updateURL    https://raw.githubusercontent.com/mr-asa/comfyui-workflows-tampermonkey/main/ComfyUIWorkflows.user.js
 // @downloadURL  https://raw.githubusercontent.com/mr-asa/comfyui-workflows-tampermonkey/main/ComfyUIWorkflows.user.js
-// @version      0.2.6
+// @version      0.2.7
 // @icon         https://raw.githubusercontent.com/Comfy-Org/ComfyUI_frontend/main/public/assets/favicon.ico
 // @description  Find embedded ComfyUI workflows and prompts in web media, attachments, and code blocks.
 // @match        http://*/*
@@ -53,6 +53,7 @@
 "use strict";
 
 
+const SAVE_HELPER = "http://127.0.0.1:8191/save";
 const DEFAULT_SERVER = "http://127.0.0.1:8188";
 const BADGE_CLASS = "cuw-badge";
 const PNG_SIG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
@@ -194,7 +195,28 @@ function extractModels(variant) {
                 }
             }
         } else if (variant.workflow) {
-            for (const node of parseJson(variant.workflow).nodes || []) {
+            const workflow = parseJson(variant.workflow);
+            const subgraphs = new Map();
+            const pending = [workflow];
+            while (pending.length) {
+                for (const subgraph of pending.pop().definitions?.subgraphs || []) {
+                    if (subgraphs.has(String(subgraph.id))) continue;
+                    subgraphs.set(String(subgraph.id), subgraph);
+                    pending.push(subgraph);
+                }
+            }
+            const visited = new Set([workflow]);
+            const nodes = [...(workflow.nodes || [])];
+            for (const node of nodes) {
+                const subgraph = subgraphs.get(String(node.type));
+                if (subgraph) {
+                    if (!visited.has(subgraph)) {
+                        visited.add(subgraph);
+                        nodes.push(...(subgraph.nodes || []));
+                    }
+                    continue;
+                }
+                if (/^(?:MarkdownNote|Note)$/i.test(node.type)) continue;
                 for (const w of node.widgets_values || []) {
                     if (typeof w === "string" && MODEL_EXT.test(w)) add(w, undefined, node.type);
                     else if (w && typeof w === "object" && !Array.isArray(w)) {
@@ -562,7 +584,7 @@ async function requestMedia(url, { headers, maxBytes, partial = false } = {}) {
 }
 
 
-const DEFAULT_SETTINGS = { x: 0, y: 0, server: DEFAULT_SERVER, copyFilename: false };
+const DEFAULT_SETTINGS = { x: 0, y: 0, server: DEFAULT_SERVER, copyFilename: false, saveFolder: "" };
 const coordinate = (value, fallback) =>
     typeof value === "number" && Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : fallback;
 
@@ -582,6 +604,10 @@ class ComfyUIWorkflow {
         this.settings.y = coordinate(this.settings.y, 0);
         this.applyPosition();
         GM_registerMenuCommand("ComfyUI Workflow settings", () => this.showSettings());
+        GM_registerMenuCommand("Set save helper token", () => {
+            const token = window.prompt("Paste the token printed by the local save helper.");
+            if (token !== null) GM_setValue("saveHelperToken", token.trim());
+        });
         const schedule = () => {
             if (this.scanTimer) return;
             this.scanTimer = setTimeout(() => {
@@ -671,11 +697,22 @@ class ComfyUIWorkflow {
     }
 
     showSettings() {
-        const axis = (name, value) => element("input", { type: "number", min: 0, max: 1, step: "any", value, "aria-label": name });
+        const axis = (name, value) => {
+            const input = element("input", { type: "number", min: 0, max: 1, step: "any", value, "aria-label": name });
+            input.addEventListener("wheel", event => {
+                if (!event.deltaY || event.ctrlKey) return;
+                event.preventDefault();
+                const current = coordinate(input.valueAsNumber, value);
+                const next = coordinate(current - Math.sign(event.deltaY) * 0.1, value);
+                input.value = String(Number(next.toFixed(10)));
+            }, { passive: false });
+            return input;
+        };
         const x = axis("X (horizontal)", this.settings.x);
         const y = axis("Y (vertical)", this.settings.y);
         const server = element("input", { type: "url", value: this.server, required: true, spellcheck: false });
         const copy = element("input", { type: "checkbox", checked: this.settings.copyFilename });
+        const saveFolder = element("input", { type: "text", value: this.settings.saveFolder, spellcheck: false, autocomplete: "off" });
         const readServer = () => {
             server.setCustomValidity("");
             const value = server.value.trim().replace(/\/+$/, "");
@@ -700,7 +737,9 @@ class ComfyUIWorkflow {
                 "Badge position relative to the attachment or code block. (0, 0) top left · (1, 0) top right · (0, 1) bottom left · (1, 1) bottom right · (0.5, 0.5) center."),
             element("label", null, "ComfyUI server URL", server),
             element("div", null, button("Test connection", test)),
-            element("label", null, copy, " Copy JSON filename after download"));
+            element("label", null, "JSON save folder (absolute path)", saveFolder),
+            element("div", { className: "cuw-note" }, "Leave blank for browser downloads. A folder path requires the local save helper."),
+            element("label", null, copy, " Copy JSON filename after saving"));
         x.required = y.required = true;
         showDialog("ComfyUI Workflow settings", content, {
             confirmText: "Save", cancelText: "Cancel",
@@ -708,7 +747,11 @@ class ComfyUIWorkflow {
                 if (!x.reportValidity() || !y.reportValidity()) return false;
                 const url = readServer();
                 if (!url) return false;
-                this.settings = { x: x.valueAsNumber, y: y.valueAsNumber, server: url, copyFilename: copy.checked };
+                const folder = saveFolder.value.trim();
+                const absolute = /^(?:[A-Za-z]:[\\/]|\/|\\\\)/.test(folder);
+                saveFolder.setCustomValidity(folder && !absolute ? "Enter an absolute folder path." : "");
+                if (!saveFolder.reportValidity()) return false;
+                this.settings = { x: x.valueAsNumber, y: y.valueAsNumber, server: url, copyFilename: copy.checked, saveFolder: folder };
                 GM_setValue("settings", this.settings);
                 this.applyPosition();
             }
@@ -758,15 +801,35 @@ class ComfyUIWorkflow {
         showDialog(`Prompts: ${title}`, content);
     }
 
-    save(base, json) {
+    async save(base, json) {
         const filename = base.replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_") + ".json";
+        const { saveFolder, copyFilename } = this.settings;
+        if (saveFolder) {
+            const token = GM_getValue("saveHelperToken", "");
+            if (!token) throw new Error("Set the save helper token in the Tampermonkey menu.");
+            let response;
+            try {
+                response = await request(SAVE_HELPER, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                    body: JSON.stringify({ folder: saveFolder, filename, json })
+                });
+            } catch {
+                throw new Error("Start the local save helper to save to the configured folder.");
+            }
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error || `Save failed (HTTP ${response.status})`);
+            if (copyFilename) GM_setClipboard(result.filename, "text");
+            notify(`Saved: ${result.filename}`);
+            return;
+        }
         const url = URL.createObjectURL(new Blob([json], { type: "application/json" }));
         const link = element("a", { href: url, download: filename });
         document.body.append(link);
         link.click();
         link.remove();
         setTimeout(() => URL.revokeObjectURL(url), 30000);
-        if (this.settings.copyFilename) GM_setClipboard(filename, "text");
+        if (copyFilename) GM_setClipboard(filename, "text");
         notify(`Download started: ${filename}`);
     }
 
@@ -901,19 +964,24 @@ class ComfyUIWorkflow {
         await Promise.all(classes.map(async c => options.set(c, await this.comboOptions(c))));
         const status = m => {
             const combos = options.get(m.cls);
-            if (!combos) return { st: "unknown" };
+            if (!combos || !Object.keys(combos).length) return { st: "unknown" };
             const lists = m.key && combos[m.key] ? [combos[m.key]] : Object.values(combos);
             return matchModel(m.name, lists.flat());
         };
         const symbols = { ok: "✓", similar: "≈", related: "~", missing: "✗", unknown: "?" };
-        const reachable = [...options.values()].some(Boolean);
+        const hasUnknown = models.some(m => status(m).st === "unknown");
+        const reachable = [...options.values()].some(Boolean)
+            || await request(`${this.server}/system_stats`).then(res => res.ok, () => false);
+        const note = !reachable
+            ? `Cannot reach ComfyUI at ${this.server}. Availability is unknown.`
+            : hasUnknown ? "ComfyUI is reachable. Model options are unavailable for some workflow nodes." : "";
         const icons = await this.loadIcons();
 
 
         const h = element;
         const kinds = [...new Set(models.map(m => m.kind))];
         const content = h("div", { className: "cuw-card" },
-            !reachable && h("div", { className: "cuw-note" }, `ComfyUI at ${this.server} is not reachable, so availability is unknown.`),
+            note && h("div", { className: "cuw-note" }, note),
             kinds.map(kind => h("div", { key: kind },
                 h("h4", null, kind),
                 models.filter(m => m.kind === kind).map(m => {
@@ -941,6 +1009,16 @@ class ComfyUIWorkflow {
         try {
             const url = new URL(src, document.baseURI);
             if (!["http:", "https:"].includes(url.protocol)) return null;
+            if (JSON_EXT.test(url.pathname)) {
+                const githubBlob = /^\/([^/]+)\/([^/]+)\/blob\/(.+)$/.exec(url.pathname);
+                if (url.hostname === "github.com" && githubBlob) {
+                    const [, owner, repo, file] = githubBlob;
+                    return `https://raw.githubusercontent.com/${owner}/${repo}/${file}`;
+                }
+                if (url.hostname === "huggingface.co") {
+                    url.pathname = url.pathname.replace(/^(\/(?:datasets\/|spaces\/)?[^/]+\/[^/]+)\/blob\//, "$1/resolve/");
+                }
+            }
             if (url.hostname === "media.discordapp.net") url.hostname = "cdn.discordapp.com";
             if (url.hostname === "cdn.discordapp.com") {
                 ["width", "height", "format", "quality", "animated"].forEach(key => url.searchParams.delete(key));

@@ -44,6 +44,16 @@ The default ComfyUI URL is `http://127.0.0.1:8188`. Use **Test connection** to c
   </tr>
 </table>
 
+## Save to an absolute folder
+
+Leave **JSON save folder** blank to use normal browser downloads. To save directly to a folder on Windows, run the helper with Python 3:
+
+```powershell
+py -3 save-workflows.py "D:\Workflows"
+```
+
+Keep the helper running, enter the same absolute folder in the userscript settings, and choose **Set save helper token** in the Tampermonkey menu. Paste the token shown in the terminal. The helper generates a new token each time it starts and only writes to its launch folder. Duplicate export names get a numbered suffix.
+
 ## Civitai generation parameters
 
 A Civitai original image with embedded plain-text generation parameters gets a **P** badge. Open **Prompts** to view and copy the positive and negative prompts or the full parameters block. Queueing requires a ComfyUI API prompt.
@@ -57,7 +67,7 @@ Hover over a thumbnail to open the [Imagus](https://chromewebstore.google.com/de
 - View and copy positive and negative prompts.
 - Queue API prompts in ComfyUI with model path matching and confirmation for quantization substitutions.
 - Inspect model and LoRA availability and open model search links.
-- Download workflow and prompt JSON. The browser controls the download folder. Settings can enable copying the suggested filename.
+- Save workflow and prompt JSON. Settings can enable copying the filename.
 
 <table>
   <tr>
