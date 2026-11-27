@@ -5,7 +5,7 @@
 // @supportURL   https://github.com/mr-asa/comfyui-workflows-tampermonkey/issues
 // @updateURL    https://raw.githubusercontent.com/mr-asa/comfyui-workflows-tampermonkey/main/ComfyUIWorkflows.user.js
 // @downloadURL  https://raw.githubusercontent.com/mr-asa/comfyui-workflows-tampermonkey/main/ComfyUIWorkflows.user.js
-// @version      0.2.0
+// @version      0.2.1
 // @icon         https://raw.githubusercontent.com/Comfy-Org/ComfyUI_frontend/main/public/assets/favicon.ico
 // @description  Find embedded ComfyUI workflows and prompts in web media, attachments, and code blocks.
 // @match        http://*/*
@@ -28,6 +28,7 @@
 // @exclude      *://*.max.com/*
 // @exclude      *://spotify.com/*
 // @exclude      *://*.spotify.com/*
+// @run-at       document-idle
 // @noframes
 // @grant        GM_addStyle
 // @grant        GM_getValue
@@ -492,6 +493,41 @@ function request(url, { method = "GET", headers, body, maxBytes, partial = false
     });
 }
 
+async function requestMedia(url, { headers, maxBytes, partial = false } = {}) {
+    if (new URL(url).origin !== location.origin) return request(url, { headers, maxBytes, partial });
+    try {
+        const response = await fetch(url, { headers, credentials: "same-origin" });
+        if (!response.ok || (partial && response.status !== 206) || !response.body) {
+            await response.body?.cancel();
+            return null;
+        }
+        const reader = response.body.getReader();
+        const chunks = [];
+        let size = 0;
+        try {
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                size += value.byteLength;
+                if (size > maxBytes) return null;
+                chunks.push(value);
+            }
+        } finally {
+            await reader.cancel().catch(() => {});
+        }
+        const bytes = new Uint8Array(size);
+        let offset = 0;
+        for (const chunk of chunks) {
+            bytes.set(chunk, offset);
+            offset += chunk.byteLength;
+        }
+        return { ok: true, arrayBuffer: async () => bytes.buffer };
+    } catch {
+        return request(url, { headers, maxBytes, partial });
+    }
+}
+
+
 const DEFAULT_SETTINGS = { x: 0, y: 0, server: DEFAULT_SERVER, copyFilename: false };
 const coordinate = (value, fallback) =>
     typeof value === "number" && Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : fallback;
@@ -866,8 +902,8 @@ class ComfyUIWorkflow {
     async fetchMeta(url, rangeOnly) {
         const name = new URL(url).pathname;
         if (rangeOnly || RANGE_EXT.test(name)) return this.fetchLargeMeta(url, BOX_EXT.test(name));
-        const res = await request(url, { maxBytes: JSON_EXT.test(name) ? MAX_JSON_FILE : MAX_MOOV });
-        if (!res.ok) return null;
+        const res = await requestMedia(url, { maxBytes: JSON_EXT.test(name) ? MAX_JSON_FILE : MAX_MOOV });
+        if (!res?.ok) return null;
         const buf = new Uint8Array(await res.arrayBuffer());
         if (JSON_EXT.test(name)) return scanBytes(buf);
         return (await parsePng(buf)) ?? scanBytes(buf);
@@ -920,8 +956,8 @@ class ComfyUIWorkflow {
 
     async fetchRange(url, range, maxBytes) {
         try {
-            const response = await request(url, { headers: { Range: range }, maxBytes, partial: true });
-            return response.ok ? new Uint8Array(await response.arrayBuffer()) : null;
+            const response = await requestMedia(url, { headers: { Range: range }, maxBytes, partial: true });
+            return response?.ok ? new Uint8Array(await response.arrayBuffer()) : null;
         } catch {
             return null;
         }
