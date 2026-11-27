@@ -5,7 +5,7 @@
 // @supportURL   https://github.com/mr-asa/comfyui-workflows-tampermonkey/issues
 // @updateURL    https://raw.githubusercontent.com/mr-asa/comfyui-workflows-tampermonkey/main/ComfyUIWorkflows.user.js
 // @downloadURL  https://raw.githubusercontent.com/mr-asa/comfyui-workflows-tampermonkey/main/ComfyUIWorkflows.user.js
-// @version      0.2.2
+// @version      0.2.3
 // @icon         https://raw.githubusercontent.com/Comfy-Org/ComfyUI_frontend/main/public/assets/favicon.ico
 // @description  Find embedded ComfyUI workflows and prompts in web media, attachments, and code blocks.
 // @match        http://*/*
@@ -42,6 +42,7 @@
 // @connect      localhost
 // @connect      127.0.0.1
 // @connect      civitai.com
+// @connect      image.civitai.com
 // @connect      huggingface.co
 // @connect      google.com
 // @connect      *
@@ -55,7 +56,7 @@
 const DEFAULT_SERVER = "http://127.0.0.1:8188";
 const BADGE_CLASS = "cuw-badge";
 const PNG_SIG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
-const KEYS = ["workflow", "prompt"];
+const KEYS = ["workflow", "prompt", "parameters"];
 const IMAGE_EXT = /\.(png|webp|jpe?g)$/i;
 const BOX_EXT = /\.(mp4|mov|m4v|m4a)$/i; // ISO base media: walk the boxes to find moov
 const RANGE_EXT = /\.(mp4|webm|mov|mkv|m4v|flac|mp3|ogg|opus|m4a|wav)$/i; // large: never download whole
@@ -337,6 +338,20 @@ function matchBrace(text, start) {
 
 const scanBytes = buf => scanText(utf8.decode(buf));
 
+function parseParameters(raw) {
+    const text = raw?.trim();
+    if (!text) return null;
+    const settings = /(?:^|\r?\n)(?=Steps:\s*\d+\b)/i.exec(text);
+    const promptText = (settings ? text.slice(0, settings.index) : text).trim();
+    const negative = /(?:^|\r?\n)Negative prompt:\s*/i.exec(promptText);
+    return {
+        positive: (negative ? promptText.slice(0, negative.index) : promptText).trim(),
+        negative: negative ? promptText.slice(negative.index + negative[0].length).trim() : "",
+        raw: text
+    };
+}
+
+
 async function parsePng(buf) {
     if (!PNG_SIG.every((b, i) => buf[i] === b)) return null;
     const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
@@ -371,7 +386,10 @@ async function parsePng(buf) {
         }
         pos = end + 4; // skip CRC
     }
-    return found.workflow || found.prompt ? { variants: [{ workflow: found.workflow, prompt: found.prompt }] } : null;
+    const parameters = parseParameters(found.parameters);
+    return found.workflow || found.prompt || parameters
+        ? { variants: [{ workflow: found.workflow, prompt: found.prompt, parameters }] }
+        : null;
 }
 
 
@@ -696,8 +714,12 @@ class ComfyUIWorkflow {
         variants.forEach((variant, i) => {
             const suffix = variants.length > 1 ? ` #${i + 1}` : "";
             const file = variants.length > 1 ? `${base}_${i + 1}` : base;
-            const { positive, negative } = extractPrompts(variant);
-            if (positive || negative) add("Prompts" + suffix, () => this.showPrompts({ positive, negative }, file));
+            const extracted = extractPrompts(variant);
+            const positive = extracted.positive || variant.parameters?.positive;
+            const negative = extracted.negative || variant.parameters?.negative;
+            if (positive || negative || variant.parameters) {
+                add("Prompts" + suffix, () => this.showPrompts({ positive, negative, parameters: variant.parameters?.raw }, file));
+            }
             if (variant.prompt) add("Queue in ComfyUI" + suffix, () => this.sendToComfy(variant.prompt));
             if (extractModels(variant).length) add("Models and LoRAs" + suffix, () => this.showModels(variant, file));
             if (variant.workflow) add("Save workflow as JSON" + suffix, () => this.save(file, variant.workflow));
@@ -709,11 +731,11 @@ class ComfyUIWorkflow {
 
     showPrompts(prompts, title) {
         const content = element("div", { className: "cuw-card" });
-        for (const [label, text] of Object.entries({ Positive: prompts.positive, Negative: prompts.negative })) {
+        for (const [label, text] of Object.entries({ Positive: prompts.positive, Negative: prompts.negative, "Generation parameters": prompts.parameters })) {
             if (!text) continue;
             content.append(element("section", null,
                 element("div", { className: "cuw-row" }, element("h4", null, label),
-                    button("Copy", () => { GM_setClipboard(text, "text"); notify(`${label} prompt copied`); })),
+                    button("Copy", () => { GM_setClipboard(text, "text"); notify(`${label} copied`); })),
                 element("textarea", { readOnly: true, value: text, rows: Math.min(10, Math.max(3, Math.ceil(text.length / 70))), "aria-label": label })));
         }
         showDialog(`Prompts: ${title}`, content);
@@ -905,6 +927,13 @@ class ComfyUIWorkflow {
             if (url.hostname === "media.discordapp.net") url.hostname = "cdn.discordapp.com";
             if (url.hostname === "cdn.discordapp.com") {
                 ["width", "height", "format", "quality", "animated"].forEach(key => url.searchParams.delete(key));
+            }
+            if (url.hostname === "image.civitai.com") {
+                const parts = url.pathname.split("/");
+                if (parts.length === 5 && parts[3].includes("=") && IMAGE_EXT.test(parts[4])) {
+                    parts[3] = "original=true";
+                    url.pathname = parts.join("/");
+                }
             }
             if (/\.(m3u8|mpd)$/i.test(url.pathname)) return null;
             const supported = [IMAGE_EXT, RANGE_EXT, JSON_EXT].some(ext => ext.test(url.pathname));

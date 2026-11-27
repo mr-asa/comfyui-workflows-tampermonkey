@@ -26,6 +26,10 @@ Enter X and Y from 0 to 1. X increases rightward and Y increases downward, relat
 
 The default ComfyUI URL is `http://127.0.0.1:8188`. Use **Test connection** to check your URL. Tampermonkey may ask for permission to contact your configured server.
 
+## Civitai generation parameters
+
+A Civitai original image with embedded plain-text generation parameters gets a **P** badge. Open **Prompts** to view and copy the positive and negative prompts or the full parameters block. Queueing requires a ComfyUI API prompt.
+
 ## Imagus
 
 Hover over a thumbnail to open the Imagus or Imagus Reborn popup. The script checks the media URL shown in the popup and displays a badge if that file contains ComfyUI metadata.
